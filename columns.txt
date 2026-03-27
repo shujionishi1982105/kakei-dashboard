@@ -1,0 +1,2 @@
+品目分類, 品番, 品名, 価格１, 単位, 診療区分, 診療区分名, 外来　使用量, 入院　使用量, 合計　使用量, 外来　使用高, 入院　使用高, 合計　使用高, 整形外科, Unnamed: 14, Unnamed: 15, Unnamed: 16, Unnamed: 17, Unnamed: 18, Unnamed: 19, Unnamed: 20, Unnamed: 21, Unnamed: 22, a・b・c, 規格単位, 外来規格単位数量, 入院規格単位数量, Unnamed: 27
+1, 20000, アルツディスポ関節注２５ｍｇ　１％, 930, 筒, 34, 他注, 5, 0, 5, 4650, 0, 4650, 5, nan, nan, nan, nan, nan, nan, nan, nan, nan, b, 1, 5, 0, nan
