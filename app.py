@@ -265,11 +265,12 @@ if current_page == "経営全体・主要KPI" or current_page == "AI総合アド
     df_prev_year = df_all[df_all['年'] == f"R{prev_year_int}年"]
 
     active_months = df_curr_year['月単体'].unique().tolist()
+    # 前年比計算用の「前年同期間」のデータ
     df_prev_year_ytd = df_prev_year[df_prev_year['月単体'].isin(active_months)]
 
     st.subheader(f"📊 {selected_year} 整形外科 全体業績サマリー")
     if len(active_months) < 12 and len(active_months) > 0:
-        st.caption(f"※前年比は、データが存在する期間（{active_months[0]}〜{active_months[-1]}）の同期間で比較しています。")
+        st.caption(f"※表の「年間合計」の前年比は、データが存在する期間（{active_months[0]}〜{active_months[-1]}）の累計で比較しています。")
 
     c1, c2, c3 = st.columns(3)
     
@@ -302,67 +303,74 @@ if current_page == "経営全体・主要KPI" or current_page == "AI総合アド
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    # ★★★ 【今回追加・修正した箇所】詳細数値データ（年間一覧） ★★★
+    # ★★★ 【今回修正：合計行とYTD前年比の追加】 ★★★
     st.write("---")
     st.write("#### 📋 詳細数値データ（年間一覧）")
 
     if not df_curr_year.empty:
-        # 当年のカテゴリ別売上を集計
+        # 1. 当年の月別・カテゴリ別集計
         pivot_df = df_curr_year.pivot_table(
-            index='月単体', 
-            columns='カテゴリ名', 
-            values='金額_円', 
-            aggfunc='sum'
+            index='月単体', columns='カテゴリ名', values='金額_円', aggfunc='sum'
         ).reindex(month_order).fillna(0)
 
-        # 前年のカテゴリ別売上を集計（前年比計算用）
-        if not df_prev_year.empty:
-            pivot_prev = df_prev_year.pivot_table(
-                index='月単体', 
-                columns='カテゴリ名', 
-                values='金額_円', 
-                aggfunc='sum'
-            ).reindex(month_order).fillna(0)
-            total_prev = pivot_prev.sum(axis=1)
-        else:
-            total_prev = pd.Series(0, index=month_order)
+        # 2. 前年の月別・カテゴリ別集計
+        pivot_prev = df_prev_year.pivot_table(
+            index='月単体', columns='カテゴリ名', values='金額_円', aggfunc='sum'
+        ).reindex(month_order).fillna(0) if not df_prev_year.empty else pd.DataFrame(0, index=month_order, columns=pivot_df.columns)
 
-        # 当年の「総診療報酬」を計算
-        total_curr = pivot_df.sum(axis=1)
-
-        # 一番【左側】に「総診療報酬」の列を挿入
-        pivot_df.insert(0, '総診療報酬', total_curr)
-
-        # 前年比の計算リストを作成し、一番【右側】に追加
-        yoy_list = []
-        for m in month_order:
-            c_val = total_curr.get(m, 0)
-            p_val = total_prev.get(m, 0)
-            if p_val > 0:
-                yoy_list.append(f"{(c_val / p_val) * 100:.1f}%")
-            elif c_val > 0:
-                yoy_list.append("100.0%")
-            else:
-                yoy_list.append("-")
+        # 3. 各月の総収益と前年比の計算
+        total_curr_m = pivot_df.sum(axis=1)
+        total_prev_m = pivot_prev.sum(axis=1)
         
-        # DataFrameの一番最後に列を追加すると自動で一番右に配置されます
-        pivot_df['前年比'] = yoy_list
+        yoy_col = []
+        for m in month_order:
+            c, p = total_curr_m.get(m, 0), total_prev_m.get(m, 0)
+            yoy_col.append(f"{(c/p*100):.1f}%" if p > 0 else ("100.0%" if c > 0 else "-"))
 
-        # ★ 横幅を揃えるため、項目名を画像のように短くリネーム
+        # 4. 「年間合計」行の作成
+        # 数値列の単純合計
+        sum_row_values = pivot_df.sum()
+        total_revenue_sum = total_curr_m.sum()
+        
+        # 合計行の前年比（YTD: 年初から現在までの累計比較）
+        # 前年の同期間のみを合計して比較する
+        ytd_prev_total = total_prev_m[total_prev_m.index.isin(active_months)].sum()
+        if ytd_prev_total > 0:
+            yoy_total = f"{(total_revenue_sum / ytd_prev_total * 100):.1f}%"
+        else:
+            yoy_total = "-"
+
+        # 5. 表の組み立て
+        pivot_df.insert(0, '総診療報酬', total_curr_m)
+        pivot_df['前年比'] = yoy_col
+
+        # 合計行のデータフレーム作成
+        sum_df = pd.DataFrame([sum_row_values], columns=sum_row_values.index)
+        sum_df.insert(0, '総診療報酬', total_revenue_sum)
+        sum_df['前年比'] = yoy_total
+        sum_df.index = ['年間合計']
+
+        # 結合
+        final_df = pd.concat([pivot_df, sum_df])
+
+        # 6. 表示用のリネーム（短縮名）
         rename_cols = {
             '基本診療料・医学管理料等': '基本・管理',
             '薬剤（院内）・院外処方': '薬剤',
             '調剤・処方': '調剤',
             '画像診断': '画像'
         }
-        pivot_df = pivot_df.rename(columns=rename_cols)
+        final_df = final_df.rename(columns=rename_cols)
 
-        # 「前年比」列以外を3桁区切り（カンマ）で見やすくフォーマット
-        format_dict = {col: "{:,.0f}" for col in pivot_df.columns if col != '前年比'}
+        # 7. スタイル適用（カンマ区切り、合計行の太字化）
+        format_dict = {col: "{:,.0f}" for col in final_df.columns if col != '前年比'}
+        
+        def style_total_row(styler):
+            # 最後の行（年間合計）を太字、背景を少しグレーに
+            return styler.apply(lambda x: ['font-weight: bold; background-color: #f8f9fa' if x.name == '年間合計' else '' for _ in x], axis=1)
 
-        # テーブルを表示
         st.dataframe(
-            pivot_df.style.format(format_dict), 
+            style_total_row(final_df.style.format(format_dict)),
             use_container_width=True
         )
     else:
