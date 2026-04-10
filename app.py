@@ -176,6 +176,10 @@ def load_kakei_data():
         df['単価'] = pd.to_numeric(df['単価'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
         df['回数'] = pd.to_numeric(df['回数'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
         
+        # ★【修正箇所】ベースアップ評価料など、単価が違うのに名前が同じ項目を分離する
+        mask = df['診療行為'].str.contains('外来・在宅ベースアップ評価料', na=False)
+        df.loc[mask, '診療行為'] = df.loc[mask, '診療行為'].astype(str) + '（' + df.loc[mask, '単価'].astype(int).astype(str) + '点）'
+
         df['総値'] = df['単価'] * df['回数']
         
         df['金額_円'] = df['総値'] * 10
@@ -195,7 +199,6 @@ def calc_diff_ratio(curr_val, prev_val):
     return f"前年比 {(curr_val / prev_val) * 100:.1f}%"
 
 month_order = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"]
-
 # ==========================================
 # 4. メイン画面とナビゲーション
 # ==========================================
@@ -298,6 +301,72 @@ if current_page == "経営全体・主要KPI" or current_page == "AI総合アド
         margin=dict(l=10, r=10, t=30, b=10)
     )
     st.plotly_chart(fig, use_container_width=True)
+
+    # ★★★ 【今回追加・修正した箇所】詳細数値データ（年間一覧） ★★★
+    st.write("---")
+    st.write("#### 📋 詳細数値データ（年間一覧）")
+
+    if not df_curr_year.empty:
+        # 当年のカテゴリ別売上を集計
+        pivot_df = df_curr_year.pivot_table(
+            index='月単体', 
+            columns='カテゴリ名', 
+            values='金額_円', 
+            aggfunc='sum'
+        ).reindex(month_order).fillna(0)
+
+        # 前年のカテゴリ別売上を集計（前年比計算用）
+        if not df_prev_year.empty:
+            pivot_prev = df_prev_year.pivot_table(
+                index='月単体', 
+                columns='カテゴリ名', 
+                values='金額_円', 
+                aggfunc='sum'
+            ).reindex(month_order).fillna(0)
+            total_prev = pivot_prev.sum(axis=1)
+        else:
+            total_prev = pd.Series(0, index=month_order)
+
+        # 当年の「総診療報酬」を計算
+        total_curr = pivot_df.sum(axis=1)
+
+        # 一番【左側】に「総診療報酬」の列を挿入
+        pivot_df.insert(0, '総診療報酬', total_curr)
+
+        # 前年比の計算リストを作成し、一番【右側】に追加
+        yoy_list = []
+        for m in month_order:
+            c_val = total_curr.get(m, 0)
+            p_val = total_prev.get(m, 0)
+            if p_val > 0:
+                yoy_list.append(f"{(c_val / p_val) * 100:.1f}%")
+            elif c_val > 0:
+                yoy_list.append("100.0%")
+            else:
+                yoy_list.append("-")
+        
+        # DataFrameの一番最後に列を追加すると自動で一番右に配置されます
+        pivot_df['前年比'] = yoy_list
+
+        # ★ 横幅を揃えるため、項目名を画像のように短くリネーム
+        rename_cols = {
+            '基本診療料・医学管理料等': '基本・管理',
+            '薬剤（院内）・院外処方': '薬剤',
+            '調剤・処方': '調剤',
+            '画像診断': '画像'
+        }
+        pivot_df = pivot_df.rename(columns=rename_cols)
+
+        # 「前年比」列以外を3桁区切り（カンマ）で見やすくフォーマット
+        format_dict = {col: "{:,.0f}" for col in pivot_df.columns if col != '前年比'}
+
+        # テーブルを表示
+        st.dataframe(
+            pivot_df.style.format(format_dict), 
+            use_container_width=True
+        )
+    else:
+        st.info("データがありません。")
 
 else:
     target_cat = current_page
