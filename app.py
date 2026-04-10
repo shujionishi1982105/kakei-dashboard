@@ -176,14 +176,17 @@ def load_kakei_data():
         df['単価'] = pd.to_numeric(df['単価'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
         df['回数'] = pd.to_numeric(df['回数'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
         
-        # ★【修正箇所】ベースアップ評価料など、単価が違うのに名前が同じ項目を分離する
+        # ベースアップ評価料など、単価が違うのに名前が同じ項目を分離する
         mask = df['診療行為'].str.contains('外来・在宅ベースアップ評価料', na=False)
         df.loc[mask, '診療行為'] = df.loc[mask, '診療行為'].astype(str) + '（' + df.loc[mask, '単価'].astype(int).astype(str) + '点）'
 
         df['総値'] = df['単価'] * df['回数']
         
+        # ★【今回修正した箇所】売上（金額）の計算
         df['金額_円'] = df['総値'] * 10
         df.loc[df['品目分類'] == 11, '金額_円'] = df.loc[df['品目分類'] == 11, '総値']
+        # 院外処方（品目分類14）は売上にならないため金額を0円にする
+        df.loc[df['品目分類'] == 14, '金額_円'] = 0  
         
         match = re.search(r'\d{6}', file)
         month_raw = match.group() if match else "000000"
