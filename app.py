@@ -305,17 +305,19 @@ if current_page in special_pages:
             long_agg = df_target_long.groupby(['年月_dt', '年月ラベル'], as_index=False).agg({'回数': 'sum', '金額_円': 'sum'}).sort_values('年月_dt')
             
             fig_long = make_subplots(specs=[[{"secondary_y": True}]])
-            # 金額（棒グラフ）＋データラベル（横向き）
+            
+            # ★ 改善1：金額（棒）は白・太字で棒の内側に収納
             fig_long.add_trace(go.Bar(
                 x=long_agg['年月ラベル'], y=long_agg['金額_円'], name='金額(円)', marker_color='#3498DB',
-                text=long_agg['金額_円'].apply(lambda x: f"{x:,.0f}" if x>0 else ""), 
-                textposition='outside', textangle=0
+                text=long_agg['金額_円'].apply(lambda x: f"<b>{x:,.0f}</b>" if x>0 else ""), 
+                textposition='inside', textangle=0, textfont=dict(color='white', size=14)
             ), secondary_y=False)
-            # 回数（折れ線グラフ）＋大きく濃いデータラベル
+            
+            # ★ 改善2：回数（折れ線）は濃い赤・さらに大きく・「回」を付けて明確に分離
             fig_long.add_trace(go.Scatter(
                 x=long_agg['年月ラベル'], y=long_agg['回数'], name='回数', mode='lines+markers+text', 
-                line=dict(color='#E74C3C', width=3), text=long_agg['回数'].apply(lambda x: f"{x:,.0f}" if x>0 else ""), 
-                textposition='top center', textfont=dict(size=16, color='#8B0000')
+                line=dict(color='#E74C3C', width=3), text=long_agg['回数'].apply(lambda x: f"<b>{x:,.0f}回</b>" if x>0 else ""), 
+                textposition='top center', textfont=dict(size=18, color='#800000')
             ), secondary_y=True)
             
             fig_long.update_traces(cliponaxis=False)
@@ -339,17 +341,19 @@ if current_page in special_pages:
         monthly_agg = df_curr_spec.groupby('月単体').agg({'回数': 'sum', '金額_円': 'sum'}).reindex(month_order).fillna(0)
         
         fig_s = make_subplots(specs=[[{"secondary_y": True}]])
-        # 金額（棒グラフ）＋データラベル（横向き）
+        
+        # ★ 改善1：金額（棒）は白・太字で棒の内側に収納
         fig_s.add_trace(go.Bar(
-            x=monthly_agg.index, y=monthly_agg['金額_円'], name='金額(円)', marker_color='#2E86C1',
-            text=monthly_agg['金額_円'].apply(lambda x: f"{x:,.0f}" if x>0 else ""), 
-            textposition='outside', textangle=0
+            x=monthly_agg.index, y=monthly_agg['金額_円'], name='金額(円)', marker_color='#3498DB',
+            text=monthly_agg['金額_円'].apply(lambda x: f"<b>{x:,.0f}</b>" if x>0 else ""), 
+            textposition='inside', textangle=0, textfont=dict(color='white', size=14)
         ), secondary_y=False)
-        # 回数（折れ線グラフ）＋大きく濃いデータラベル
+        
+        # ★ 改善2：回数（折れ線）は濃い赤・さらに大きく・「回」を付けて明確に分離
         fig_s.add_trace(go.Scatter(
             x=monthly_agg.index, y=monthly_agg['回数'], name='回数', mode='lines+markers+text', 
-            line=dict(color='#E74C3C', width=3), text=monthly_agg['回数'].apply(lambda x: f"{x:,.0f}" if x>0 else ""), 
-            textposition='top center', textfont=dict(size=16, color='#8B0000')
+            line=dict(color='#E74C3C', width=3), text=monthly_agg['回数'].apply(lambda x: f"<b>{x:,.0f}回</b>" if x>0 else ""), 
+            textposition='top center', textfont=dict(size=18, color='#800000')
         ), secondary_y=True)
         
         fig_s.update_traces(cliponaxis=False)
