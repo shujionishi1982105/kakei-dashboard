@@ -294,17 +294,19 @@ if current_page == "来院分析":
         # ② 診察患者数とリハビリ患者数のグラフ
         st.write(f"#### ② {selected_v_year} 診察・リハビリ患者数")
         fig2 = go.Figure()
-        # ★【修正箇所】textパラメータを追加してデータラベルを表示
         fig2.add_trace(go.Bar(
             x=df_curr_v['月単体'], y=df_curr_v['診察患者数(合算)'], name='診察患者数', marker_color='#2E86C1',
-            text=df_curr_v['診察患者数(合算)'].apply(lambda x: f"{x:,.0f}" if x > 0 else ""), textposition='auto'
+            text=df_curr_v['診察患者数(合算)'].apply(lambda x: f"{x:,.0f}" if x > 0 else "")
         ))
         if col_rehab in df_curr_v.columns:
             fig2.add_trace(go.Bar(
                 x=df_curr_v['月単体'], y=df_curr_v[col_rehab], name='リハビリ患者数', marker_color='#27AE60',
-                text=df_curr_v[col_rehab].apply(lambda x: f"{x:,.0f}" if x > 0 else ""), textposition='auto'
+                text=df_curr_v[col_rehab].apply(lambda x: f"{x:,.0f}" if x > 0 else "")
             ))
-        fig2.update_layout(hovermode="x unified", barmode='group')
+            
+        # ★【修正箇所】ラベルを横向き（textangle=0）で棒の外側（outside）に表示し、はみ出しを許可
+        fig2.update_traces(textposition='outside', textangle=0, cliponaxis=False)
+        fig2.update_layout(hovermode="x unified", barmode='group', margin=dict(t=40))
         st.plotly_chart(fig2, use_container_width=True)
 
         # ③ 診察患者数(新患) と リハビリ患者数(新患)
@@ -313,15 +315,16 @@ if current_page == "来院分析":
         colors = ['#F39C12', '#8E44AD', '#D35400']
         for idx, c in enumerate(new_cols):
             if c in df_curr_v.columns:
-                # ★【修正箇所】textパラメータを追加してデータラベルを表示
                 fig3.add_trace(go.Bar(
                     x=df_curr_v['月単体'], y=df_curr_v[c], name=c, marker_color=colors[idx % len(colors)],
-                    text=df_curr_v[c].apply(lambda x: f"{x:,.0f}" if x > 0 else ""), textposition='auto'
+                    text=df_curr_v[c].apply(lambda x: f"{x:,.0f}" if x > 0 else "")
                 ))
         if not new_cols:
             st.info("※ スプレッドシートに「新患」という名称を含むデータが見つかりませんでした。")
         else:
-            fig3.update_layout(hovermode="x unified", barmode='group')
+            # ★【修正箇所】こちらも同様に横向き・外側に設定
+            fig3.update_traces(textposition='outside', textangle=0, cliponaxis=False)
+            fig3.update_layout(hovermode="x unified", barmode='group', margin=dict(t=40))
             st.plotly_chart(fig3, use_container_width=True)
 
         # ④ 1日平均来院数と1日平均リハビリ人数のグラフ
@@ -329,7 +332,6 @@ if current_page == "来院分析":
         fig4 = go.Figure()
         
         if col_avg_visit in df_curr_v.columns:
-            # ★【修正箇所】modeを'lines+markers+text'に変更し、小数点1桁でラベル表示
             fig4.add_trace(go.Scatter(
                 x=df_curr_v['月単体'], y=df_curr_v[col_avg_visit], name='1日平均来院数', 
                 mode='lines+markers+text', line=dict(color='#2980B9', width=3),
@@ -339,7 +341,6 @@ if current_page == "来院分析":
             st.warning(f"「{col_avg_visit}」のデータが見つかりませんでした。")
             
         if col_avg_rehab in df_curr_v.columns:
-            # ★【修正箇所】modeを'lines+markers+text'に変更し、小数点1桁でラベル表示
             fig4.add_trace(go.Scatter(
                 x=df_curr_v['月単体'], y=df_curr_v[col_avg_rehab], name='1日平均リハビリ', 
                 mode='lines+markers+text', line=dict(color='#16A085', dash='dot', width=3),
@@ -348,7 +349,9 @@ if current_page == "来院分析":
         else:
             st.warning(f"「{col_avg_rehab}」のデータが見つかりませんでした。")
         
-        fig4.update_layout(hovermode="x unified", yaxis_title="人数 (人)")
+        # 折れ線グラフも上部が切れないようにマージンとクリップ解除を設定
+        fig4.update_traces(cliponaxis=False)
+        fig4.update_layout(hovermode="x unified", yaxis_title="人数 (人)", margin=dict(t=40))
         st.plotly_chart(fig4, use_container_width=True)
 
         # ⑤ 年度別の詳細データ一覧
@@ -384,6 +387,7 @@ if current_page == "来院分析":
 
         with st.expander("🛠️ プログラムがスプレッドシートから読み込んだ項目名一覧を見る"):
             st.write(df_v.columns.tolist())
+            
 elif current_page == "患者属性推移" or current_page == "エリア別推移":
     st.info(f"「{current_page}」は現在準備中です。")
 
