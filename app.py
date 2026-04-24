@@ -265,7 +265,7 @@ if current_page == "来院分析":
         st.write("#### ① 延べ来院数・新規患者率の長期推移（2022年3月〜）")
         df_long = df_v[df_v['年月_dt'] >= '2022-03-01'].copy()
         
-        # ★【修正箇所】データがない（来院数が0の）未来の月を除外する
+        # データがない（来院数が0の）未来の月を除外する
         if col_total_visit in df_long.columns:
             df_long = df_long[df_long[col_total_visit] > 0]
         
@@ -294,9 +294,16 @@ if current_page == "来院分析":
         # ② 診察患者数とリハビリ患者数のグラフ
         st.write(f"#### ② {selected_v_year} 診察・リハビリ患者数")
         fig2 = go.Figure()
-        fig2.add_trace(go.Bar(x=df_curr_v['月単体'], y=df_curr_v['診察患者数(合算)'], name='診察患者数', marker_color='#2E86C1'))
+        # ★【修正箇所】textパラメータを追加してデータラベルを表示
+        fig2.add_trace(go.Bar(
+            x=df_curr_v['月単体'], y=df_curr_v['診察患者数(合算)'], name='診察患者数', marker_color='#2E86C1',
+            text=df_curr_v['診察患者数(合算)'].apply(lambda x: f"{x:,.0f}" if x > 0 else ""), textposition='auto'
+        ))
         if col_rehab in df_curr_v.columns:
-            fig2.add_trace(go.Bar(x=df_curr_v['月単体'], y=df_curr_v[col_rehab], name='リハビリ患者数', marker_color='#27AE60'))
+            fig2.add_trace(go.Bar(
+                x=df_curr_v['月単体'], y=df_curr_v[col_rehab], name='リハビリ患者数', marker_color='#27AE60',
+                text=df_curr_v[col_rehab].apply(lambda x: f"{x:,.0f}" if x > 0 else ""), textposition='auto'
+            ))
         fig2.update_layout(hovermode="x unified", barmode='group')
         st.plotly_chart(fig2, use_container_width=True)
 
@@ -306,7 +313,11 @@ if current_page == "来院分析":
         colors = ['#F39C12', '#8E44AD', '#D35400']
         for idx, c in enumerate(new_cols):
             if c in df_curr_v.columns:
-                fig3.add_trace(go.Bar(x=df_curr_v['月単体'], y=df_curr_v[c], name=c, marker_color=colors[idx % len(colors)]))
+                # ★【修正箇所】textパラメータを追加してデータラベルを表示
+                fig3.add_trace(go.Bar(
+                    x=df_curr_v['月単体'], y=df_curr_v[c], name=c, marker_color=colors[idx % len(colors)],
+                    text=df_curr_v[c].apply(lambda x: f"{x:,.0f}" if x > 0 else ""), textposition='auto'
+                ))
         if not new_cols:
             st.info("※ スプレッドシートに「新患」という名称を含むデータが見つかりませんでした。")
         else:
@@ -318,12 +329,22 @@ if current_page == "来院分析":
         fig4 = go.Figure()
         
         if col_avg_visit in df_curr_v.columns:
-            fig4.add_trace(go.Scatter(x=df_curr_v['月単体'], y=df_curr_v[col_avg_visit], name='1日平均来院数', mode='lines+markers', line=dict(color='#2980B9', width=3)))
+            # ★【修正箇所】modeを'lines+markers+text'に変更し、小数点1桁でラベル表示
+            fig4.add_trace(go.Scatter(
+                x=df_curr_v['月単体'], y=df_curr_v[col_avg_visit], name='1日平均来院数', 
+                mode='lines+markers+text', line=dict(color='#2980B9', width=3),
+                text=df_curr_v[col_avg_visit].apply(lambda x: f"{x:.1f}" if x > 0 else ""), textposition='top center'
+            ))
         else:
             st.warning(f"「{col_avg_visit}」のデータが見つかりませんでした。")
             
         if col_avg_rehab in df_curr_v.columns:
-            fig4.add_trace(go.Scatter(x=df_curr_v['月単体'], y=df_curr_v[col_avg_rehab], name='1日平均リハビリ', mode='lines+markers', line=dict(color='#16A085', dash='dot', width=3)))
+            # ★【修正箇所】modeを'lines+markers+text'に変更し、小数点1桁でラベル表示
+            fig4.add_trace(go.Scatter(
+                x=df_curr_v['月単体'], y=df_curr_v[col_avg_rehab], name='1日平均リハビリ', 
+                mode='lines+markers+text', line=dict(color='#16A085', dash='dot', width=3),
+                text=df_curr_v[col_avg_rehab].apply(lambda x: f"{x:.1f}" if x > 0 else ""), textposition='top center'
+            ))
         else:
             st.warning(f"「{col_avg_rehab}」のデータが見つかりませんでした。")
         
@@ -333,25 +354,20 @@ if current_page == "来院分析":
         # ⑤ 年度別の詳細データ一覧
         st.write(f"#### ⑤ {selected_v_year} 詳細データ一覧")
         
-        # ★【修正箇所】スプレッドシートの並び順を再現するための指定リスト
         target_order = [
             '診療のみ', '診療＆リハビリ', '診療のみ（新患）', '診療＆リハビリ（新患）', '小計',
             'リハビリのみ', '合計（1日の総患者数）', '実稼働（1日:1 半日:0.5）', 
             '１日平均来院数（人）', '1日平均来院数（人）', 'リハビリ合計', '1日平均リハビリ人数', '新規患者率'
         ]
         
-        # 不要な列を除外
         exclude_cols = ['年月', '年月_dt', '年', '月単体', '診察患者数(合算)']
         available_metrics = [c for c in df_curr_v.columns if c not in exclude_cols]
         
-        # 並び替え（リストにあるものを優先し、ないものは後ろに追加）
         final_order = [m for m in target_order if m in available_metrics]
         final_order += [m for m in available_metrics if m not in final_order]
         
-        # 行を項目、列を「年月（例:2026年1月）」にして転置
         disp_df = df_curr_v.set_index('年月')[final_order].T
         
-        # 表の数値を美しくフォーマットする（カンマ、小数点、%）
         def format_cell(val, metric_name):
             try:
                 v = float(val)
@@ -361,7 +377,6 @@ if current_page == "来院分析":
             except:
                 return val
 
-        # 各セルにフォーマットを適用
         for col in disp_df.columns:
             disp_df[col] = [format_cell(disp_df.at[idx, col], idx) for idx in disp_df.index]
             
