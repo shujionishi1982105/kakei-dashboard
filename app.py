@@ -23,7 +23,7 @@ def check_password():
     pw_input = st.text_input("パスワード", type="password", key="user_pw")
     
     if st.button("ログイン"):
-        if user_input == USER_ID and pw_input == USER_PASS:
+        if user_input.strip() == USER_ID and pw_input.strip() == USER_PASS:
             st.session_state["authenticated"] = True
             st.rerun()
         else:
@@ -182,7 +182,7 @@ def load_kakei_data():
 
         df['総値'] = df['単価'] * df['回数']
         
-        # ★【今回修正した箇所】売上（金額）の計算
+        # 売上（金額）の計算
         df['金額_円'] = df['総値'] * 10
         df.loc[df['品目分類'] == 11, '金額_円'] = df.loc[df['品目分類'] == 11, '総値']
         # 院外処方（品目分類14）は売上にならないため金額を0円にする
@@ -197,11 +197,25 @@ def load_kakei_data():
             
     return pd.concat(combined_list, ignore_index=True) if combined_list else pd.DataFrame()
 
+# ★ 今回追加：スプレッドシートの読み込み関数
+@st.cache_data
+def load_spreadsheet_visit_data():
+    sheet_id = "1dxSQfw9S5H_d9xNJ_VxduO4R1XRbscN1cpobCvmlhIw"
+    gid = "1419942397"
+    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
+    try:
+        df_visit = pd.read_csv(url)
+        return df_visit
+    except Exception as e:
+        st.error(f"スプレッドシートの読み込みに失敗しました: {e}")
+        return pd.DataFrame()
+
 def calc_diff_ratio(curr_val, prev_val):
     if prev_val == 0: return "前年データなし"
     return f"前年比 {(curr_val / prev_val) * 100:.1f}%"
 
 month_order = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"]
+
 # ==========================================
 # 4. メイン画面とナビゲーション
 # ==========================================
@@ -218,37 +232,38 @@ else:
 
 df_all = load_kakei_data()
 if df_all.empty:
-    st.error("データが見つかりません。")
+    st.error("CSVデータが見つかりません。")
     st.stop()
 
-pages = [
-    "経営全体・主要KPI", 
-    "薬剤（院内）・院外処方", 
-    "基本診療料・医学管理料等", 
-    "調剤・処方",
-    "注射", 
-    "処置", 
-    "手術", 
-    "検査", 
-    "画像診断", 
-    "その他", 
-    "自費", 
-    "AI総合アドバイス"
+# ★ 今回修正：メニューの2段構え化
+kpi_pages = [
+    "経営全体・主要KPI", "薬剤（院内）・院外処方", "基本診療料・医学管理料等", "調剤・処方",
+    "注射", "処置", "手術", "検査", "画像診断", "その他", "自費", "AI総合アドバイス"
 ]
+patient_pages = ["来院分析", "患者属性推移", "エリア別推移"]
 
-if 'current_page' not in st.session_state: st.session_state.current_page = pages[0]
+if 'current_page' not in st.session_state: st.session_state.current_page = kpi_pages[0]
 
-st.write("### 🔍 分析メニュー")
-for i in range(0, len(pages), 4):
+# --- KPI分析メニュー ---
+st.write("### 🔍 KPI分析メニュー")
+for i in range(0, len(kpi_pages), 4):
     cols = st.columns(4)
     for j in range(4):
-        if i + j < len(pages):
-            p_name = pages[i + j]
+        if i + j < len(kpi_pages):
+            p_name = kpi_pages[i + j]
             with cols[j]:
-                btn_type = "primary" if st.session_state.current_page == p_name else "secondary"
-                if st.button(p_name, use_container_width=True, key=f"nav_btn_{i+j}", type=btn_type):
+                if st.button(p_name, use_container_width=True, key=f"kpi_btn_{i+j}", type="primary" if st.session_state.current_page == p_name else "secondary"):
                     st.session_state.current_page = p_name
                     st.rerun()
+
+# --- 患者分析メニュー ---
+st.write("### 👥 患者分析メニュー")
+cols_p = st.columns(4)
+for i, p_name in enumerate(patient_pages):
+    with cols_p[i]:
+        if st.button(p_name, use_container_width=True, key=f"patient_btn_{i}", type="primary" if st.session_state.current_page == p_name else "secondary"):
+            st.session_state.current_page = p_name
+            st.rerun()
 st.write("---")
 
 current_page = st.session_state.current_page
@@ -257,7 +272,52 @@ available_years = sorted(df_all['年'].dropna().unique())
 # ==========================================
 # 5. 個別ページの表示内容
 # ==========================================
-if current_page == "経営全体・主要KPI" or current_page == "AI総合アドバイス":
+
+# ★ 今回追加：来院分析（スプレッドシート連携）ページ
+if current_page == "来院分析":
+    st.header("📈 患者来院動向分析")
+    df_v = load_spreadsheet_visit_data()
+    
+    if df_v.empty:
+        st.warning("スプレッドシートのデータが読み込めませんでした。共有設定を確認してください。")
+    else:
+        # メトリクス表示（直近のデータをサンプルとして表示）
+        latest = df_v.iloc[-1]
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("総来院数", f"{latest.get('総来院数', 0):,}人")
+        c2.metric("新患数", f"{latest.get('新患', 0):,}人")
+        c3.metric("新患率", f"{latest.get('新患率', '0%')}")
+        c4.metric("1日平均来院", f"{latest.get('1日平均来院数', 0):.1f}人")
+
+        # 来院数推移グラフ
+        st.write("#### 🗓️ 来院数推移")
+        fig_v = go.Figure()
+        if '診察来院数' in df_v.columns:
+            fig_v.add_trace(go.Scatter(x=df_v['月'], y=df_v['診察来院数'], name='診察', line=dict(color='#2E86C1', width=3)))
+        if 'リハビリ来院数' in df_v.columns:
+            fig_v.add_trace(go.Scatter(x=df_v['月'], y=df_v['リハビリ来院数'], name='リハビリ', line=dict(color='#27AE60', width=3)))
+        if '新患' in df_v.columns:
+            fig_v.add_trace(go.Bar(x=df_v['月'], y=df_v['新患'], name='新患', marker_color='#E74C3C', opacity=0.6))
+        fig_v.update_layout(hovermode="x unified", barmode='group')
+        st.plotly_chart(fig_v, use_container_width=True)
+
+        # 効率性指標
+        st.write("#### ⚡ 1日平均指標の推移")
+        fig_avg = go.Figure()
+        if '1日平均来院数' in df_v.columns:
+            fig_avg.add_trace(go.Scatter(x=df_v['月'], y=df_v['1日平均来院数'], name='平均来院数', line=dict(color='#F39C12', dash='dash')))
+        if '1日平均リハビリ来院数' in df_v.columns:
+            fig_avg.add_trace(go.Scatter(x=df_v['月'], y=df_v['1日平均リハビリ来院数'], name='平均リハ来院', line=dict(color='#8E44AD', dash='dot')))
+        st.plotly_chart(fig_avg, use_container_width=True)
+
+        # 詳細テーブル
+        st.write("#### 📋 来院詳細データ一覧")
+        st.dataframe(df_v, use_container_width=True)
+
+elif current_page == "患者属性推移" or current_page == "エリア別推移":
+    st.info(f"「{current_page}」は現在準備中です。データの準備ができ次第実装します。")
+
+elif current_page == "経営全体・主要KPI" or current_page == "AI総合アドバイス":
     
     col_year, col_dummy = st.columns(2)
     with col_year:
@@ -306,7 +366,6 @@ if current_page == "経営全体・主要KPI" or current_page == "AI総合アド
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    # ★★★ 【今回修正：合計行とYTD前年比の追加】 ★★★
     st.write("---")
     st.write("#### 📋 詳細数値データ（年間一覧）")
 
@@ -331,12 +390,9 @@ if current_page == "経営全体・主要KPI" or current_page == "AI総合アド
             yoy_col.append(f"{(c/p*100):.1f}%" if p > 0 else ("100.0%" if c > 0 else "-"))
 
         # 4. 「年間合計」行の作成
-        # 数値列の単純合計
         sum_row_values = pivot_df.sum()
         total_revenue_sum = total_curr_m.sum()
         
-        # 合計行の前年比（YTD: 年初から現在までの累計比較）
-        # 前年の同期間のみを合計して比較する
         ytd_prev_total = total_prev_m[total_prev_m.index.isin(active_months)].sum()
         if ytd_prev_total > 0:
             yoy_total = f"{(total_revenue_sum / ytd_prev_total * 100):.1f}%"
@@ -347,13 +403,11 @@ if current_page == "経営全体・主要KPI" or current_page == "AI総合アド
         pivot_df.insert(0, '総診療報酬', total_curr_m)
         pivot_df['前年比'] = yoy_col
 
-        # 合計行のデータフレーム作成
         sum_df = pd.DataFrame([sum_row_values], columns=sum_row_values.index)
         sum_df.insert(0, '総診療報酬', total_revenue_sum)
         sum_df['前年比'] = yoy_total
         sum_df.index = ['年間合計']
 
-        # 結合
         final_df = pd.concat([pivot_df, sum_df])
 
         # 6. 表示用のリネーム（短縮名）
@@ -369,7 +423,6 @@ if current_page == "経営全体・主要KPI" or current_page == "AI総合アド
         format_dict = {col: "{:,.0f}" for col in final_df.columns if col != '前年比'}
         
         def style_total_row(styler):
-            # 最後の行（年間合計）を太字、背景を少しグレーに
             return styler.apply(lambda x: ['font-weight: bold; background-color: #f8f9fa' if x.name == '年間合計' else '' for _ in x], axis=1)
 
         st.dataframe(
