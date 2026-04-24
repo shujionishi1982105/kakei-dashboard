@@ -248,13 +248,17 @@ if current_page == "来院分析":
         col_total_visit = get_col(['合計', '総患者'], '合計（1日の総患者数）')
         col_new_rate = get_col(['新規', '率'], '新規患者率')
         col_rehab = get_col(['リハビリ合計'], 'リハビリ合計')
-        col_avg_visit = get_col(['1日平均来院'], '1日平均来院数（人）')
-        col_avg_rehab = get_col(['1日平均リハビリ'], '1日平均リハビリ人数')
         
-        # 診察のみ・診察＆リハビリから診察患者数を算出
-        col_consult_only = get_col(['診療のみ'])
-        col_consult_rehab = get_col(['診療＆リハビリ'])
-        df_v['診察患者数(合算)'] = df_v.get(col_consult_only, 0) + df_v.get(col_consult_rehab, 0)
+        # ★【修正箇所】全角「１」や半角「1」の違いを無視するため、「日平均来院数」だけで探すように変更しました
+        col_avg_visit = get_col(['日平均来院数'], '１日平均来院数（人）')
+        col_avg_rehab = get_col(['日平均リハビリ'], '1日平均リハビリ人数')
+        
+        # 安全に合算する（列が存在しない場合は0として計算してエラーを防ぐ）
+        col_consult_only = get_col(['診療のみ'], '診療のみ')
+        col_consult_rehab = get_col(['診療＆リハビリ'], '診療＆リハビリ')
+        v_only = df_v[col_consult_only] if col_consult_only in df_v.columns else 0
+        v_rehab = df_v[col_consult_rehab] if col_consult_rehab in df_v.columns else 0
+        df_v['診察患者数(合算)'] = v_only + v_rehab
         
         # 新患のカラムを自動検索
         new_cols = [c for c in df_v.columns if '新患' in c and '率' not in c]
@@ -264,8 +268,11 @@ if current_page == "来院分析":
         df_long = df_v[df_v['年月_dt'] >= '2022-03-01'].copy()
         
         fig1 = make_subplots(specs=[[{"secondary_y": True}]])
-        fig1.add_trace(go.Bar(x=df_long['年月'], y=df_long[col_total_visit], name='延べ来院数', marker_color='#3498DB'), secondary_y=False)
-        fig1.add_trace(go.Scatter(x=df_long['年月'], y=df_long[col_new_rate], name='新規患者率(%)', mode='lines+markers', line=dict(color='#E74C3C', width=3)), secondary_y=True)
+        if col_total_visit in df_long.columns:
+            fig1.add_trace(go.Bar(x=df_long['年月'], y=df_long[col_total_visit], name='延べ来院数', marker_color='#3498DB'), secondary_y=False)
+        if col_new_rate in df_long.columns:
+            fig1.add_trace(go.Scatter(x=df_long['年月'], y=df_long[col_new_rate], name='新規患者率(%)', mode='lines+markers', line=dict(color='#E74C3C', width=3)), secondary_y=True)
+        
         fig1.update_layout(hovermode="x unified", margin=dict(l=10, r=10, t=30, b=10))
         fig1.update_yaxes(title_text="延べ来院数 (人)", secondary_y=False)
         fig1.update_yaxes(title_text="新規患者率 (%)", secondary_y=True)
@@ -286,7 +293,8 @@ if current_page == "来院分析":
         st.write(f"#### ② {selected_v_year} 診察・リハビリ患者数")
         fig2 = go.Figure()
         fig2.add_trace(go.Bar(x=df_curr_v['月単体'], y=df_curr_v['診察患者数(合算)'], name='診察患者数', marker_color='#2E86C1'))
-        fig2.add_trace(go.Bar(x=df_curr_v['月単体'], y=df_curr_v[col_rehab], name='リハビリ患者数', marker_color='#27AE60'))
+        if col_rehab in df_curr_v.columns:
+            fig2.add_trace(go.Bar(x=df_curr_v['月単体'], y=df_curr_v[col_rehab], name='リハビリ患者数', marker_color='#27AE60'))
         fig2.update_layout(hovermode="x unified", barmode='group')
         st.plotly_chart(fig2, use_container_width=True)
 
@@ -295,7 +303,8 @@ if current_page == "来院分析":
         fig3 = go.Figure()
         colors = ['#F39C12', '#8E44AD', '#D35400']
         for idx, c in enumerate(new_cols):
-            fig3.add_trace(go.Bar(x=df_curr_v['月単体'], y=df_curr_v[c], name=c, marker_color=colors[idx % len(colors)]))
+            if c in df_curr_v.columns:
+                fig3.add_trace(go.Bar(x=df_curr_v['月単体'], y=df_curr_v[c], name=c, marker_color=colors[idx % len(colors)]))
         if not new_cols:
             st.info("※ スプレッドシートに「新患」という名称を含むデータが見つかりませんでした。")
         else:
@@ -305,17 +314,24 @@ if current_page == "来院分析":
         # ④ 1日平均来院数と1日平均リハビリ人数のグラフ
         st.write(f"#### ④ {selected_v_year} 1日平均人数の推移")
         fig4 = go.Figure()
-        fig4.add_trace(go.Scatter(x=df_curr_v['月単体'], y=df_curr_v[col_avg_visit], name='1日平均来院数', mode='lines+markers', line=dict(color='#2980B9', width=3)))
-        fig4.add_trace(go.Scatter(x=df_curr_v['月単体'], y=df_curr_v[col_avg_rehab], name='1日平均リハビリ', mode='lines+markers', line=dict(color='#16A085', dash='dot', width=3)))
+        
+        if col_avg_visit in df_curr_v.columns:
+            fig4.add_trace(go.Scatter(x=df_curr_v['月単体'], y=df_curr_v[col_avg_visit], name='1日平均来院数', mode='lines+markers', line=dict(color='#2980B9', width=3)))
+        else:
+            st.warning(f"「{col_avg_visit}」のデータが見つかりませんでした。")
+            
+        if col_avg_rehab in df_curr_v.columns:
+            fig4.add_trace(go.Scatter(x=df_curr_v['月単体'], y=df_curr_v[col_avg_rehab], name='1日平均リハビリ', mode='lines+markers', line=dict(color='#16A085', dash='dot', width=3)))
+        else:
+            st.warning(f"「{col_avg_rehab}」のデータが見つかりませんでした。")
+        
         fig4.update_layout(hovermode="x unified", yaxis_title="人数 (人)")
         st.plotly_chart(fig4, use_container_width=True)
 
         # ⑤ 年度別の詳細データ一覧
         st.write(f"#### ⑤ {selected_v_year} 詳細データ一覧")
-        # 見やすくするために、行を指標、列を月に変換 (スプレッドシートと同じ見栄え)
-        disp_df = df_curr_v.drop(columns=['年月_dt', '年', '診察患者数(合算)']).set_index('月単体').T
+        disp_df = df_curr_v.drop(columns=['年月_dt', '年', '診察患者数(合算)'], errors='ignore').set_index('月単体').T
         st.dataframe(disp_df, use_container_width=True)
-
 elif current_page == "患者属性推移" or current_page == "エリア別推移":
     st.info(f"「{current_page}」は現在準備中です。")
 
