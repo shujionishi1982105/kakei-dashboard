@@ -295,7 +295,6 @@ if current_page in special_pages:
     if df_target.empty:
         st.warning(f"{current_page} のデータが見つかりませんでした。")
     else:
-        # ★【追加】年度を超えたこれまでの総推移のグラフ
         st.write(f"#### 📈 これまでの全期間 金額・回数推移（{current_page}）")
         df_target_long = df_target.copy()
         try:
@@ -306,14 +305,19 @@ if current_page in special_pages:
             long_agg = df_target_long.groupby(['年月_dt', '年月ラベル'], as_index=False).agg({'回数': 'sum', '金額_円': 'sum'}).sort_values('年月_dt')
             
             fig_long = make_subplots(specs=[[{"secondary_y": True}]])
-            fig_long.add_trace(go.Bar(x=long_agg['年月ラベル'], y=long_agg['金額_円'], name='金額(円)', marker_color='#3498DB'), secondary_y=False)
+            # 金額（棒グラフ）＋データラベル
+            fig_long.add_trace(go.Bar(
+                x=long_agg['年月ラベル'], y=long_agg['金額_円'], name='金額(円)', marker_color='#3498DB',
+                text=long_agg['金額_円'].apply(lambda x: f"{x:,.0f}" if x>0 else ""), textposition='outside'
+            ), secondary_y=False)
+            # 回数（折れ線グラフ）＋大きく濃いデータラベル
             fig_long.add_trace(go.Scatter(
                 x=long_agg['年月ラベル'], y=long_agg['回数'], name='回数', mode='lines+markers+text', 
                 line=dict(color='#E74C3C', width=3), text=long_agg['回数'].apply(lambda x: f"{x:,.0f}" if x>0 else ""), 
-                textposition='top center'
+                textposition='top center', textfont=dict(size=16, color='#8B0000')
             ), secondary_y=True)
             
-            fig_long.update_traces(cliponaxis=False)
+            fig_long.update_traces(cliponaxis=False, textangle=0)
             fig_long.update_layout(hovermode="x unified", barmode='group', margin=dict(t=40))
             fig_long.update_yaxes(title_text="金額 (円)", secondary_y=False)
             fig_long.update_yaxes(title_text="回数", secondary_y=True)
@@ -334,14 +338,19 @@ if current_page in special_pages:
         monthly_agg = df_curr_spec.groupby('月単体').agg({'回数': 'sum', '金額_円': 'sum'}).reindex(month_order).fillna(0)
         
         fig_s = make_subplots(specs=[[{"secondary_y": True}]])
-        fig_s.add_trace(go.Bar(x=monthly_agg.index, y=monthly_agg['金額_円'], name='金額(円)', marker_color='#2E86C1'), secondary_y=False)
+        # 金額（棒グラフ）＋データラベル
+        fig_s.add_trace(go.Bar(
+            x=monthly_agg.index, y=monthly_agg['金額_円'], name='金額(円)', marker_color='#2E86C1',
+            text=monthly_agg['金額_円'].apply(lambda x: f"{x:,.0f}" if x>0 else ""), textposition='outside'
+        ), secondary_y=False)
+        # 回数（折れ線グラフ）＋大きく濃いデータラベル
         fig_s.add_trace(go.Scatter(
             x=monthly_agg.index, y=monthly_agg['回数'], name='回数', mode='lines+markers+text', 
             line=dict(color='#E74C3C', width=3), text=monthly_agg['回数'].apply(lambda x: f"{x:,.0f}" if x>0 else ""), 
-            textposition='top center'
+            textposition='top center', textfont=dict(size=16, color='#8B0000')
         ), secondary_y=True)
         
-        fig_s.update_traces(cliponaxis=False)
+        fig_s.update_traces(cliponaxis=False, textangle=0)
         fig_s.update_layout(hovermode="x unified", barmode='group', margin=dict(t=40))
         fig_s.update_yaxes(title_text="金額 (円)", secondary_y=False)
         fig_s.update_yaxes(title_text="回数", secondary_y=True)
@@ -356,14 +365,14 @@ if current_page in special_pages:
         money_pivot = df_curr_spec.pivot_table(index='診療行為', columns='月単体', values='金額_円', aggfunc='sum').reindex(columns=month_order).fillna(0)
         money_pivot['年間合計金額'] = money_pivot.sum(axis=1)
         
-        # ★【追加】月の合計行を追加
-        sum_row_c = count_pivot.sum(numeric_only=True)
-        sum_row_c.name = '★月別合計'
-        count_pivot = pd.concat([count_pivot, pd.DataFrame([sum_row_c])])
-        
-        sum_row_m = money_pivot.sum(numeric_only=True)
-        sum_row_m.name = '★月別合計'
-        money_pivot = pd.concat([money_pivot, pd.DataFrame([sum_row_m])])
+        if current_page != "クーリーフ":
+            sum_row_c = count_pivot.sum(numeric_only=True)
+            sum_row_c.name = '★月別合計'
+            count_pivot = pd.concat([count_pivot, pd.DataFrame([sum_row_c])])
+            
+            sum_row_m = money_pivot.sum(numeric_only=True)
+            sum_row_m.name = '★月別合計'
+            money_pivot = pd.concat([money_pivot, pd.DataFrame([sum_row_m])])
         
         def style_spec_table(df):
             styler = df.style.format("{:,.0f}")
