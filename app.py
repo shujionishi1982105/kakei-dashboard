@@ -305,10 +305,11 @@ if current_page in special_pages:
             long_agg = df_target_long.groupby(['年月_dt', '年月ラベル'], as_index=False).agg({'回数': 'sum', '金額_円': 'sum'}).sort_values('年月_dt')
             
             fig_long = make_subplots(specs=[[{"secondary_y": True}]])
-            # 金額（棒グラフ）＋データラベル
+            # 金額（棒グラフ）＋データラベル（横向き）
             fig_long.add_trace(go.Bar(
                 x=long_agg['年月ラベル'], y=long_agg['金額_円'], name='金額(円)', marker_color='#3498DB',
-                text=long_agg['金額_円'].apply(lambda x: f"{x:,.0f}" if x>0 else ""), textposition='outside'
+                text=long_agg['金額_円'].apply(lambda x: f"{x:,.0f}" if x>0 else ""), 
+                textposition='outside', textangle=0
             ), secondary_y=False)
             # 回数（折れ線グラフ）＋大きく濃いデータラベル
             fig_long.add_trace(go.Scatter(
@@ -317,7 +318,7 @@ if current_page in special_pages:
                 textposition='top center', textfont=dict(size=16, color='#8B0000')
             ), secondary_y=True)
             
-            fig_long.update_traces(cliponaxis=False, textangle=0)
+            fig_long.update_traces(cliponaxis=False)
             fig_long.update_layout(hovermode="x unified", barmode='group', margin=dict(t=40))
             fig_long.update_yaxes(title_text="金額 (円)", secondary_y=False)
             fig_long.update_yaxes(title_text="回数", secondary_y=True)
@@ -338,10 +339,11 @@ if current_page in special_pages:
         monthly_agg = df_curr_spec.groupby('月単体').agg({'回数': 'sum', '金額_円': 'sum'}).reindex(month_order).fillna(0)
         
         fig_s = make_subplots(specs=[[{"secondary_y": True}]])
-        # 金額（棒グラフ）＋データラベル
+        # 金額（棒グラフ）＋データラベル（横向き）
         fig_s.add_trace(go.Bar(
             x=monthly_agg.index, y=monthly_agg['金額_円'], name='金額(円)', marker_color='#2E86C1',
-            text=monthly_agg['金額_円'].apply(lambda x: f"{x:,.0f}" if x>0 else ""), textposition='outside'
+            text=monthly_agg['金額_円'].apply(lambda x: f"{x:,.0f}" if x>0 else ""), 
+            textposition='outside', textangle=0
         ), secondary_y=False)
         # 回数（折れ線グラフ）＋大きく濃いデータラベル
         fig_s.add_trace(go.Scatter(
@@ -350,7 +352,7 @@ if current_page in special_pages:
             textposition='top center', textfont=dict(size=16, color='#8B0000')
         ), secondary_y=True)
         
-        fig_s.update_traces(cliponaxis=False, textangle=0)
+        fig_s.update_traces(cliponaxis=False)
         fig_s.update_layout(hovermode="x unified", barmode='group', margin=dict(t=40))
         fig_s.update_yaxes(title_text="金額 (円)", secondary_y=False)
         fig_s.update_yaxes(title_text="回数", secondary_y=True)
