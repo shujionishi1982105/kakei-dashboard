@@ -191,9 +191,16 @@ def load_patient_data():
             except: continue
         if df is None: continue
 
-        match = re.search(r'(\d{4})', file)
-        year = match.group(1) if match else "0000"
-        df['年'] = f"{year}年"
+        # ★【修正】ファイル名から「年」と「月」両方を抽出する
+        match = re.search(r'(\d{4})[._]?(\d{2})', file)
+        if match:
+            df['年'] = f"{match.group(1)}年"
+            df['月単体'] = f"{int(match.group(2))}月"
+        else:
+            match_y = re.search(r'(\d{4})', file)
+            df['年'] = f"{match_y.group(1)}年" if match_y else "0000年"
+            df['月単体'] = "不明"
+            
         combined_list.append(df)
             
     if not combined_list: return pd.DataFrame()
@@ -209,8 +216,9 @@ def load_patient_data():
     area_extracted = area_extracted.fillna(addr.str.extract(r'^([^\d０-９]+)')[0])
     df_p['エリア'] = area_extracted.str.replace(r'字.*$', '', regex=True).str.strip()
 
+    # ★【修正】月ごとのユニーク患者を残す（年間でまとめて消さない）
     if '患者番号' in df_p.columns:
-        df_p = df_p.drop_duplicates(subset=['年', '患者番号'])
+        df_p = df_p.drop_duplicates(subset=['年', '月単体', '患者番号'])
 
     return df_p
 
@@ -281,18 +289,14 @@ if current_page == "来院分析":
                 if all(k in c for k in keywords): return c
             return default
 
-        # ★ 【修正箇所】月の総患者数に変更
         col_total_visit = get_col(['合計', '総患者'], '合計（月の総患者数）')
         col_new_rate = get_col(['新規', '率'], '新規患者率')
-        col_rehab = get_col(['リハビリ合計'], 'リハビリ合計')
         col_avg_visit = get_col(['日平均来院数'], '１日平均来院数（人）')
         col_avg_rehab = get_col(['日平均リハビリ'], '1日平均リハビリ人数')
         
-        col_consult_only = get_col(['診療のみ'], '診療のみ')
-        col_consult_rehab = get_col(['診療＆リハビリ'], '診療＆リハビリ')
-        v_only = df_v[col_consult_only] if col_consult_only in df_v.columns else 0
-        v_rehab = df_v[col_consult_rehab] if col_consult_rehab in df_v.columns else 0
-        df_v['診察患者数(合算)'] = v_only + v_rehab
+        # ★【修正②】「小計」と「リハビリのみ」を取得
+        col_subtotal = get_col(['小計'], '小計')
+        col_rehab_only = get_col(['リハビリのみ'], 'リハビリのみ')
         
         new_cols = [c for c in df_v.columns if '新患' in c and '率' not in c]
 
@@ -323,17 +327,18 @@ if current_page == "来院分析":
         df_curr_v['月単体'] = pd.Categorical(df_curr_v['月単体'], categories=month_order, ordered=True)
         df_curr_v = df_curr_v.sort_values('月単体')
 
-        # ② 診察患者数とリハビリ患者数のグラフ
-        st.write(f"#### ② {selected_v_year} 診察・リハビリ患者数")
+        # ★【修正②】診察あり患者（小計）とリハビリのみ患者のグラフに変更
+        st.write(f"#### ② {selected_v_year} 診察あり患者・リハビリのみ患者数")
         fig2 = go.Figure()
-        fig2.add_trace(go.Bar(
-            x=df_curr_v['月単体'], y=df_curr_v['診察患者数(合算)'], name='診察患者数', marker_color='#2E86C1',
-            text=df_curr_v['診察患者数(合算)'].apply(lambda x: f"{x:,.0f}" if x > 0 else "")
-        ))
-        if col_rehab in df_curr_v.columns:
+        if col_subtotal in df_curr_v.columns:
             fig2.add_trace(go.Bar(
-                x=df_curr_v['月単体'], y=df_curr_v[col_rehab], name='リハビリ患者数', marker_color='#27AE60',
-                text=df_curr_v[col_rehab].apply(lambda x: f"{x:,.0f}" if x > 0 else "")
+                x=df_curr_v['月単体'], y=df_curr_v[col_subtotal], name='診察あり患者(小計)', marker_color='#2E86C1',
+                text=df_curr_v[col_subtotal].apply(lambda x: f"{x:,.0f}" if x > 0 else "")
+            ))
+        if col_rehab_only in df_curr_v.columns:
+            fig2.add_trace(go.Bar(
+                x=df_curr_v['月単体'], y=df_curr_v[col_rehab_only], name='リハビリのみ', marker_color='#27AE60',
+                text=df_curr_v[col_rehab_only].apply(lambda x: f"{x:,.0f}" if x > 0 else "")
             ))
         fig2.update_traces(textposition='outside', textangle=0, cliponaxis=False)
         fig2.update_layout(hovermode="x unified", barmode='group', margin=dict(t=40))
@@ -366,38 +371,27 @@ if current_page == "来院分析":
                 mode='lines+markers+text', line=dict(color='#2980B9', width=3),
                 text=df_curr_v[col_avg_visit].apply(lambda x: f"{x:.1f}" if x > 0 else ""), textposition='top center'
             ))
-        else:
-            st.warning(f"「{col_avg_visit}」のデータが見つかりませんでした。")
-            
         if col_avg_rehab in df_curr_v.columns:
             fig4.add_trace(go.Scatter(
                 x=df_curr_v['月単体'], y=df_curr_v[col_avg_rehab], name='1日平均リハビリ', 
                 mode='lines+markers+text', line=dict(color='#16A085', dash='dot', width=3),
                 text=df_curr_v[col_avg_rehab].apply(lambda x: f"{x:.1f}" if x > 0 else ""), textposition='top center'
             ))
-        else:
-            st.warning(f"「{col_avg_rehab}」のデータが見つかりませんでした。")
-        
         fig4.update_traces(cliponaxis=False)
         fig4.update_layout(hovermode="x unified", yaxis_title="人数 (人)", margin=dict(t=40))
         st.plotly_chart(fig4, use_container_width=True)
 
         # ⑤ 年度別の詳細データ一覧
         st.write(f"#### ⑤ {selected_v_year} 詳細データ一覧")
-        
-        # ★ 【修正箇所】一覧表の並び順も「月の総患者数」に変更
         target_order = [
             '診療のみ', '診療＆リハビリ', '診療のみ（新患）', '診療＆リハビリ（新患）', '小計',
             'リハビリのみ', '合計（月の総患者数）', '実稼働（1日:1 半日:0.5）', 
             '１日平均来院数（人）', '1日平均来院数（人）', 'リハビリ合計', '1日平均リハビリ人数', '新規患者率'
         ]
-        
-        exclude_cols = ['年月', '年月_dt', '年', '月単体', '診察患者数(合算)']
+        exclude_cols = ['年月', '年月_dt', '年', '月単体']
         available_metrics = [c for c in df_curr_v.columns if c not in exclude_cols]
-        
         final_order = [m for m in target_order if m in available_metrics]
         final_order += [m for m in available_metrics if m not in final_order]
-        
         disp_df = df_curr_v.set_index('年月')[final_order].T
         
         def format_cell(val, metric_name):
@@ -406,17 +400,11 @@ if current_page == "来院分析":
                 if '率' in metric_name: return f"{v:.1f}%"
                 if '平均' in metric_name or '稼働' in metric_name: return f"{v:.1f}"
                 return f"{v:,.0f}"
-            except:
-                return val
+            except: return val
 
         for col in disp_df.columns:
             disp_df[col] = [format_cell(disp_df.at[idx, col], idx) for idx in disp_df.index]
-            
         st.dataframe(disp_df, use_container_width=True)
-
-        with st.expander("🛠️ プログラムがスプレッドシートから読み込んだ項目名一覧を見る"):
-            st.write(df_v.columns.tolist())
-
 
 # ------------------------------------------
 # 患者分析メニュー：患者属性推移
@@ -433,11 +421,14 @@ elif current_page == "患者属性推移":
         with col_y:
             selected_p_year = st.selectbox("📅 分析する年度を選択してください", available_p_years, index=len(available_p_years)-1, key="p_year")
         
-        df_curr_p = df_p[df_p['年'] == selected_p_year]
+        df_curr_p = df_p[df_p['年'] == selected_p_year].copy()
+        
+        # ★【修正③】各年度ごとに月別で推移が確認できるように変更
+        df_curr_p['月単体'] = pd.Categorical(df_curr_p['月単体'], categories=month_order, ordered=True)
         age_labels = ['0-9歳', '10-19歳', '20-29歳', '30-39歳', '40-49歳', '50-59歳', '60-69歳', '70-79歳', '80-89歳', '90歳以上']
 
-        st.write("#### 📈 年毎の年齢層別 患者数推移")
-        trend_df = df_p.groupby(['年', '年齢層']).size().unstack(fill_value=0)[age_labels]
+        st.write(f"#### 📈 {selected_p_year} 月別の年齢層別 患者数推移")
+        trend_df = df_curr_p.groupby(['月単体', '年齢層']).size().unstack(fill_value=0)[age_labels]
         
         fig_trend = go.Figure()
         colors = ['#F9EBEA', '#F2D7D5', '#D98880', '#C0392B', '#922B21', '#E8DAEF', '#C39BD3', '#8E44AD', '#5B2C6F', '#212F3D']
@@ -451,8 +442,10 @@ elif current_page == "患者属性推移":
 
         c1, c2 = st.columns([1, 1])
         with c1:
-            st.write(f"#### 🥧 {selected_p_year} 年齢層の割合")
-            pie_data = df_curr_p['年齢層'].value_counts().reindex(age_labels).fillna(0)
+            st.write(f"#### 🥧 {selected_p_year} 年齢層の割合 (年間ユニーク)")
+            # 円グラフ用には年間ユニーク患者を再計算
+            df_curr_p_yearly = df_curr_p.drop_duplicates(subset=['患者番号']) if '患者番号' in df_curr_p.columns else df_curr_p
+            pie_data = df_curr_p_yearly['年齢層'].value_counts().reindex(age_labels).fillna(0)
             pie_data = pie_data[pie_data > 0] 
             
             fig_pie = go.Figure(data=[go.Pie(
@@ -463,9 +456,9 @@ elif current_page == "患者属性推移":
             st.plotly_chart(fig_pie, use_container_width=True)
             
         with c2:
-            st.write("#### 📋 年齢層別 データ詳細一覧")
+            st.write("#### 📋 月別・年齢層別 データ詳細")
             disp_table = trend_df.T
-            disp_table.loc['合計'] = disp_table.sum()
+            disp_table['年間合計'] = disp_table.sum(axis=1)
             for col in disp_table.columns:
                 disp_table[col] = disp_table[col].apply(lambda x: f"{x:,.0f} 人")
             st.dataframe(disp_table, use_container_width=True)
@@ -489,19 +482,29 @@ elif current_page == "エリア別推移":
         prev_year_str = f"{int(selected_p_year.replace('年', '')) - 1}年"
         df_prev_p = df_p[df_p['年'] == prev_year_str]
 
-        st.write(f"#### 🏆 {selected_p_year} エリア別 来院患者数 TOP50")
+        # ★【修正④】データがある期間（YTD）の前年比を算出
+        active_months_p = df_curr_p['月単体'].unique().tolist()
+        df_prev_p_ytd = df_prev_p[df_prev_p['月単体'].isin(active_months_p)]
         
-        curr_area = df_curr_p['エリア'].value_counts().reset_index()
+        if len(active_months_p) < 12 and len(active_months_p) > 0:
+            st.caption(f"※表の「前年比」および「前年患者数」は、データが存在する期間（{active_months_p[0]}〜{active_months_p[-1]}）の同期間で比較しています。")
+
+        # 年間（またはYTD）のユニーク患者数で集計
+        df_curr_p_yearly = df_curr_p.drop_duplicates(subset=['患者番号']) if '患者番号' in df_curr_p.columns else df_curr_p
+        df_prev_p_ytd_yearly = df_prev_p_ytd.drop_duplicates(subset=['患者番号']) if '患者番号' in df_prev_p_ytd.columns else df_prev_p_ytd
+
+        curr_area = df_curr_p_yearly['エリア'].value_counts().reset_index()
         curr_area.columns = ['エリア', '当年患者数']
         total_curr_patients = curr_area['当年患者数'].sum()
         curr_area['割合(%)'] = (curr_area['当年患者数'] / total_curr_patients * 100) if total_curr_patients > 0 else 0
         
-        prev_area = df_prev_p['エリア'].value_counts().reset_index()
+        prev_area = df_prev_p_ytd_yearly['エリア'].value_counts().reset_index()
         prev_area.columns = ['エリア', '前年患者数']
         
         area_df = pd.merge(curr_area, prev_area, on='エリア', how='left').fillna(0)
         area_df['前年比'] = area_df.apply(lambda x: (x['当年患者数'] / x['前年患者数'] * 100) if x['前年患者数'] > 0 else 0, axis=1)
         
+        st.write(f"#### 🏆 {selected_p_year} エリア別 来院患者数 TOP50")
         top50_df = area_df.sort_values('当年患者数', ascending=False).head(50).reset_index(drop=True)
         top50_df.index += 1
         
@@ -522,6 +525,18 @@ elif current_page == "エリア別推移":
             return styler.map(color_yoy, subset=['前年比'])
 
         st.dataframe(style_area_table(top50_df), use_container_width=True)
+
+        # ★【修正⑤】前年比TOP10一覧を追加
+        st.write("---")
+        st.write(f"#### 🚀 {selected_p_year} エリア別 前年比成長率 TOP10")
+        st.caption("※極端な数値ブレを防ぐため、前年または当年に「5人以上」の来院があるエリアを対象に算出しています。")
+        
+        valid_area_df = area_df[(area_df['当年患者数'] >= 5) | (area_df['前年患者数'] >= 5)]
+        if valid_area_df.empty: valid_area_df = area_df # fallback
+        
+        top10_yoy = valid_area_df.sort_values('前年比', ascending=False).head(10).reset_index(drop=True)
+        top10_yoy.index += 1
+        st.dataframe(style_area_table(top10_yoy), use_container_width=True)
 
 # ------------------------------------------
 # KPI分析メニュー：サマリーページ
@@ -670,46 +685,7 @@ else:
             st.dataframe(style_top_table(disp_df), use_container_width=True)
 
         st.write("---")
-        st.write("### 📈 診療行為別 月別推移")
-        
-        if not d_curr.empty:
-            item_order = d_curr.groupby('診療行為')['総値'].sum().sort_values(ascending=False).index.tolist()
-            missing_prev = [x for x in d_prev['診療行為'].unique() if x not in item_order]
-            all_items = ["🌟 総額"] + item_order + missing_prev
-        else:
-            all_items = ["🌟 総額"] + sorted(list(d_prev['診療行為'].unique()))
-        
-        if all_items:
-            selected_item = st.selectbox(f"🔍 グラフ表示する項目を選択してください ({title_label})", all_items, key=f"sel_{title_label}")
-            
-            if selected_item == "🌟 総額":
-                curr_item_data = d_curr.groupby('月単体')['総値'].sum().reindex(month_order).fillna(0)
-                prev_item_data = d_prev.groupby('月単体')['総値'].sum().reindex(month_order).fillna(0)
-            else:
-                curr_item_data = d_curr[d_curr['診療行為'] == selected_item].groupby('月単体')['総値'].sum().reindex(month_order).fillna(0)
-                prev_item_data = d_prev[d_prev['診療行為'] == selected_item].groupby('月単体')['総値'].sum().reindex(month_order).fillna(0)
-            
-            plot_df = pd.DataFrame({'月': month_order, '当年': curr_item_data.values, '前年': prev_item_data.values})
-            plot_df['前年比'] = plot_df.apply(lambda x: (x['当年'] / x['前年'] * 100) if x['前年'] > 0 else 0, axis=1)
-            colors_act = ['#E74C3C' if 0 < val < 100 else ('#2E86C1' if val >= 100 else '#000000') for val in plot_df['前年比']]
-
-            fig_act = go.Figure()
-            fig_act.add_trace(go.Scatter(
-                x=plot_df['月'], y=plot_df['当年'], mode='lines+markers+text', name=f'当年 ({selected_year})',
-                line=dict(color='#2E86C1', width=4),
-                text=plot_df['前年比'].apply(lambda x: f"{x:.1f}%" if x > 0 else ""),
-                textposition="top center", textfont=dict(color=colors_act, size=13, family="Arial Black"),
-                hovertemplate=f"<b>%{{x}}</b><br>当年: %{{y:,.0f}} {unit}<extra></extra>"
-            ))
-            if plot_df['前年'].sum() > 0:
-                fig_act.add_trace(go.Scatter(
-                    x=plot_df['月'], y=plot_df['前年'], mode='lines+markers', name=f'前年実績',
-                    line=dict(color='#ABB2B9', width=2, dash='dot'),
-                    hovertemplate=f"前年: %{{y:,.0f}} {unit}<extra></extra>"
-                ))
-
-            fig_act.update_layout(hovermode="x unified", xaxis_title="診療月", yaxis_title=f"総{unit_label} ({unit})", margin=dict(l=10, r=10, t=30, b=10))
-            st.plotly_chart(fig_act, use_container_width=True)
+        # ★【修正①】不要なグラフ「📈 診療行為別 月別推移」をこの場所から完全に削除しました
 
         st.write("#### 📋 月別詳細テーブル（すべての診療行為・総点数）")
         if not d_curr.empty:
