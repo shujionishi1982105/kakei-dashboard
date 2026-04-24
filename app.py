@@ -242,6 +242,7 @@ if df_all.empty:
 
 kpi_pages = ["経営全体・主要KPI", "薬剤（院内）・院外処方", "基本診療料・医学管理料等", "調剤・処方", "注射", "処置", "手術", "検査", "画像診断", "その他", "自費", "AI総合アドバイス"]
 patient_pages = ["来院分析", "患者属性推移", "エリア別推移"]
+special_pages = ["クーリーフ", "体外衝撃波"]
 
 if 'current_page' not in st.session_state: st.session_state.current_page = kpi_pages[0]
 
@@ -263,8 +264,16 @@ for i, p_name in enumerate(patient_pages):
         if st.button(p_name, use_container_width=True, key=f"patient_btn_{i}", type="primary" if st.session_state.current_page == p_name else "secondary"):
             st.session_state.current_page = p_name
             st.rerun()
-st.write("---")
 
+st.write("### ⚡ クーリーフ・体外衝撃波分析メニュー")
+cols_s = st.columns(4)
+for i, p_name in enumerate(special_pages):
+    with cols_s[i]:
+        if st.button(p_name, use_container_width=True, key=f"special_btn_{i}", type="primary" if st.session_state.current_page == p_name else "secondary"):
+            st.session_state.current_page = p_name
+            st.rerun()
+
+st.write("---")
 current_page = st.session_state.current_page
 available_years = sorted(df_all['年'].dropna().unique())
 
@@ -273,9 +282,62 @@ available_years = sorted(df_all['年'].dropna().unique())
 # ==========================================
 
 # ------------------------------------------
+# 特殊分析メニュー：クーリーフ / 体外衝撃波
+# ------------------------------------------
+if current_page in special_pages:
+    st.header(f"⚡ {current_page} 実績分析")
+    
+    if current_page == "クーリーフ":
+        df_target = df_all[df_all['診療行為'].str.contains('末梢神経ラジオ波焼灼療法', na=False)]
+    else: # 体外衝撃波
+        df_target = df_all[df_all['診療行為'].str.contains('体外衝撃波疼痛治療術|衝撃波　単回|衝撃波　3回コース|衝撃波　初回限定', na=False)]
+        
+    if df_target.empty:
+        st.warning(f"{current_page} のデータが見つかりませんでした。")
+    else:
+        col_year, _ = st.columns(2)
+        with col_year:
+            selected_spec_year = st.selectbox("📅 表示する年を選択してください", available_years, index=len(available_years)-1, key="spec_year")
+        
+        df_curr_spec = df_target[df_target['年'] == selected_spec_year]
+        
+        # グラフ作成 (金額と回数)
+        st.write(f"#### 📈 {selected_spec_year} 月別 金額・回数推移")
+        monthly_agg = df_curr_spec.groupby('月単体').agg({'回数': 'sum', '金額_円': 'sum'}).reindex(month_order).fillna(0)
+        
+        fig_s = make_subplots(specs=[[{"secondary_y": True}]])
+        fig_s.add_trace(go.Bar(x=monthly_agg.index, y=monthly_agg['金額_円'], name='金額(円)', marker_color='#2E86C1'), secondary_y=False)
+        fig_s.add_trace(go.Scatter(
+            x=monthly_agg.index, y=monthly_agg['回数'], name='回数', mode='lines+markers+text', 
+            line=dict(color='#E74C3C', width=3), text=monthly_agg['回数'].apply(lambda x: f"{x:,.0f}" if x>0 else ""), 
+            textposition='top center'
+        ), secondary_y=True)
+        
+        fig_s.update_traces(cliponaxis=False)
+        fig_s.update_layout(hovermode="x unified", barmode='group', margin=dict(t=40))
+        fig_s.update_yaxes(title_text="金額 (円)", secondary_y=False)
+        fig_s.update_yaxes(title_text="回数", secondary_y=True)
+        st.plotly_chart(fig_s, use_container_width=True)
+        
+        # 詳細一覧表
+        st.write(f"#### 📋 {selected_spec_year} データ詳細一覧")
+        
+        count_pivot = df_curr_spec.pivot_table(index='診療行為', columns='月単体', values='回数', aggfunc='sum').reindex(columns=month_order).fillna(0)
+        count_pivot['年間合計回数'] = count_pivot.sum(axis=1)
+        
+        money_pivot = df_curr_spec.pivot_table(index='診療行為', columns='月単体', values='金額_円', aggfunc='sum').reindex(columns=month_order).fillna(0)
+        money_pivot['年間合計金額'] = money_pivot.sum(axis=1)
+        
+        st.write("##### 🔢 実施回数")
+        st.dataframe(count_pivot.style.format("{:,.0f}"), use_container_width=True)
+        st.write("##### 💰 売上金額 (円)")
+        st.dataframe(money_pivot.style.format("{:,.0f}"), use_container_width=True)
+
+
+# ------------------------------------------
 # 患者分析メニュー：来院分析
 # ------------------------------------------
-if current_page == "来院分析":
+elif current_page == "来院分析":
     st.header("📈 患者来院動向分析")
     df_v = load_spreadsheet_visit_data()
     
@@ -514,15 +576,16 @@ elif current_page == "エリア別推移":
         st.dataframe(style_area_table(top50_df), use_container_width=True)
 
         st.write("---")
-        st.write(f"#### 🚀 {selected_p_year} エリア別 前年比成長率 TOP20")
-        st.caption("※極端な数値ブレを防ぐため、前年または当年に「5人以上」の来院があるエリアを対象に算出しています。")
+        # ★【修正①】割合が1%以上のエリアをTOP10で表示
+        st.write(f"#### 🚀 {selected_p_year} エリア別 前年比成長率 TOP10")
+        st.caption("※全体の「1%以上」の患者を占める主要エリアを対象に算出しています。")
         
-        valid_area_df = area_df[(area_df['当年患者数'] >= 5) | (area_df['前年患者数'] >= 5)]
-        if valid_area_df.empty: valid_area_df = area_df # fallback
+        valid_area_df = area_df[area_df['割合(%)'] >= 1.0]
+        if valid_area_df.empty: valid_area_df = area_df # 1%以上のエリアが無い場合の保険
         
-        top20_yoy = valid_area_df.sort_values('前年比', ascending=False).head(20).reset_index(drop=True)
-        top20_yoy.index += 1
-        st.dataframe(style_area_table(top20_yoy), use_container_width=True)
+        top10_yoy = valid_area_df.sort_values('前年比', ascending=False).head(10).reset_index(drop=True)
+        top10_yoy.index += 1
+        st.dataframe(style_area_table(top10_yoy), use_container_width=True)
 
 # ------------------------------------------
 # KPI分析メニュー：サマリーページ
