@@ -306,18 +306,18 @@ if current_page in special_pages:
             
             fig_long = make_subplots(specs=[[{"secondary_y": True}]])
             
-            # ★ 改善1：金額（棒）は白・太字で棒の内側に収納
+            # ★【修正】金額（棒）は白・太字で「棒グラフの最下部（start）」に配置
             fig_long.add_trace(go.Bar(
                 x=long_agg['年月ラベル'], y=long_agg['金額_円'], name='金額(円)', marker_color='#3498DB',
                 text=long_agg['金額_円'].apply(lambda x: f"<b>{x:,.0f}</b>" if x>0 else ""), 
-                textposition='inside', textangle=0, textfont=dict(color='white', size=14)
+                textposition='inside', insidetextanchor='start', textangle=0, textfont=dict(color='white', size=14)
             ), secondary_y=False)
             
-            # ★ 改善2：回数（折れ線）は濃い赤・さらに大きく・「回」を付けて明確に分離
+            # ★【修正】回数（折れ線）は濃い赤・大きく・「回」を付ける（上部）
             fig_long.add_trace(go.Scatter(
                 x=long_agg['年月ラベル'], y=long_agg['回数'], name='回数', mode='lines+markers+text', 
                 line=dict(color='#E74C3C', width=3), text=long_agg['回数'].apply(lambda x: f"<b>{x:,.0f}回</b>" if x>0 else ""), 
-                textposition='top center', textfont=dict(size=18, color='#800000')
+                textposition='top center', textfont=dict(size=16, color='#8B0000')
             ), secondary_y=True)
             
             fig_long.update_traces(cliponaxis=False)
@@ -342,18 +342,18 @@ if current_page in special_pages:
         
         fig_s = make_subplots(specs=[[{"secondary_y": True}]])
         
-        # ★ 改善1：金額（棒）は白・太字で棒の内側に収納
+        # ★【修正】金額（棒）は白・太字で「棒グラフの最下部（start）」に配置
         fig_s.add_trace(go.Bar(
             x=monthly_agg.index, y=monthly_agg['金額_円'], name='金額(円)', marker_color='#3498DB',
             text=monthly_agg['金額_円'].apply(lambda x: f"<b>{x:,.0f}</b>" if x>0 else ""), 
-            textposition='inside', textangle=0, textfont=dict(color='white', size=14)
+            textposition='inside', insidetextanchor='start', textangle=0, textfont=dict(color='white', size=14)
         ), secondary_y=False)
         
-        # ★ 改善2：回数（折れ線）は濃い赤・さらに大きく・「回」を付けて明確に分離
+        # ★【修正】回数（折れ線）は濃い赤・大きく・「回」を付ける（上部）
         fig_s.add_trace(go.Scatter(
             x=monthly_agg.index, y=monthly_agg['回数'], name='回数', mode='lines+markers+text', 
             line=dict(color='#E74C3C', width=3), text=monthly_agg['回数'].apply(lambda x: f"<b>{x:,.0f}回</b>" if x>0 else ""), 
-            textposition='top center', textfont=dict(size=18, color='#800000')
+            textposition='top center', textfont=dict(size=16, color='#8B0000')
         ), secondary_y=True)
         
         fig_s.update_traces(cliponaxis=False)
