@@ -248,8 +248,6 @@ if current_page == "来院分析":
         col_total_visit = get_col(['合計', '総患者'], '合計（1日の総患者数）')
         col_new_rate = get_col(['新規', '率'], '新規患者率')
         col_rehab = get_col(['リハビリ合計'], 'リハビリ合計')
-        
-        # ★【修正箇所】全角「１」や半角「1」の違いを無視するため、「日平均来院数」だけで探すように変更しました
         col_avg_visit = get_col(['日平均来院数'], '１日平均来院数（人）')
         col_avg_rehab = get_col(['日平均リハビリ'], '1日平均リハビリ人数')
         
@@ -266,6 +264,10 @@ if current_page == "来院分析":
         # ① 2022年3月からの複合グラフ（左：延べ来院数、右：新規患者率）
         st.write("#### ① 延べ来院数・新規患者率の長期推移（2022年3月〜）")
         df_long = df_v[df_v['年月_dt'] >= '2022-03-01'].copy()
+        
+        # ★【修正箇所】データがない（来院数が0の）未来の月を除外する
+        if col_total_visit in df_long.columns:
+            df_long = df_long[df_long[col_total_visit] > 0]
         
         fig1 = make_subplots(specs=[[{"secondary_y": True}]])
         if col_total_visit in df_long.columns:
@@ -330,8 +332,43 @@ if current_page == "来院分析":
 
         # ⑤ 年度別の詳細データ一覧
         st.write(f"#### ⑤ {selected_v_year} 詳細データ一覧")
-        disp_df = df_curr_v.drop(columns=['年月_dt', '年', '診察患者数(合算)'], errors='ignore').set_index('月単体').T
+        
+        # ★【修正箇所】スプレッドシートの並び順を再現するための指定リスト
+        target_order = [
+            '診療のみ', '診療＆リハビリ', '診療のみ（新患）', '診療＆リハビリ（新患）', '小計',
+            'リハビリのみ', '合計（1日の総患者数）', '実稼働（1日:1 半日:0.5）', 
+            '１日平均来院数（人）', '1日平均来院数（人）', 'リハビリ合計', '1日平均リハビリ人数', '新規患者率'
+        ]
+        
+        # 不要な列を除外
+        exclude_cols = ['年月', '年月_dt', '年', '月単体', '診察患者数(合算)']
+        available_metrics = [c for c in df_curr_v.columns if c not in exclude_cols]
+        
+        # 並び替え（リストにあるものを優先し、ないものは後ろに追加）
+        final_order = [m for m in target_order if m in available_metrics]
+        final_order += [m for m in available_metrics if m not in final_order]
+        
+        # 行を項目、列を「年月（例:2026年1月）」にして転置
+        disp_df = df_curr_v.set_index('年月')[final_order].T
+        
+        # 表の数値を美しくフォーマットする（カンマ、小数点、%）
+        def format_cell(val, metric_name):
+            try:
+                v = float(val)
+                if '率' in metric_name: return f"{v:.1f}%"
+                if '平均' in metric_name or '稼働' in metric_name: return f"{v:.1f}"
+                return f"{v:,.0f}"
+            except:
+                return val
+
+        # 各セルにフォーマットを適用
+        for col in disp_df.columns:
+            disp_df[col] = [format_cell(disp_df.at[idx, col], idx) for idx in disp_df.index]
+            
         st.dataframe(disp_df, use_container_width=True)
+
+        with st.expander("🛠️ プログラムがスプレッドシートから読み込んだ項目名一覧を見る"):
+            st.write(df_v.columns.tolist())
 elif current_page == "患者属性推移" or current_page == "エリア別推移":
     st.info(f"「{current_page}」は現在準備中です。")
 
